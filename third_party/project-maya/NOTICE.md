@@ -13,3 +13,9 @@ Changes made while porting into Strata are listed in the git history of the `src
 Later changes taken from Project Maya releases v1.1.18 to v1.1.26 (the same approach re-written onto Strata's engine,
 for example the long-prompt layer skip, the thinking budget, conversation slots) are covered by the same copyright
 and permission notice, in `LICENSE` beside this file.
+
+The one-GPU decode path in `src/dsv41/ds4_pcie.cuh`, `src/dsv41/ds4_pcie.hpp` and `src/dsv41/ds4_model.cu` comes from
+Project Maya 1.1.33 (commit 88a746c) with the Windows change of mw00/project-maya#567 (commit 43b8a6c): the PCIe lane
+(v1.1.18, #312; the whole-step check, #329), the recent slots (#344), RubenTorney's in-place pulls, streamed verify
+windows, landings and device clock (#476), and the gate that keeps the path where it streams (#496). The same
+copyright and permission notice covers it.

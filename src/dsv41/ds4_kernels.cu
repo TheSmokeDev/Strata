@@ -2126,6 +2126,16 @@ void zc_stage(unsigned long long* plan, const int* idx, const unsigned long long
     zc_fix_kernel<<<1, 32, 0, s>>>(plan, idx, zc_tab, k, stage, stride);
 }
 
+// a tick's expert-table entries (the recent slots', Project Maya #344): n (entry address, value) pairs in one launch, in
+// stream order before the next window (a copy of each entry on its own was ~10 us of the host's, 48 of them 0.5 ms)
+__global__ void tab_set_kernel(const unsigned long long* __restrict__ pairs, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) *(unsigned long long*) pairs[2 * i] = pairs[2 * i + 1];
+}
+void tab_set(const unsigned long long* pairs, int n, cudaStream_t s) {
+    if (n > 0) tab_set_kernel<<<cdiv(n, 128), 128, 0, s>>>(pairs, n);
+}
+
 void init_pre(float* pre, int T, cudaStream_t s) { init_pre_kernel<<<cdiv(T * 8, 128), 128, 0, s>>>(pre, T); }
 
 void embed(const uint16_t* rows, int T, float* h, int dim, int hc, cudaStream_t s) {

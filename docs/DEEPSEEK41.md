@@ -131,6 +131,50 @@ gain of more than 5%, and the result is written into the launch's settings. Expe
 1 to 3 minutes); close other heavy programs first. If a run fails or the computer is too busy to tell, the standard settings stay and one plain line
 says so. The RAM store (`--ssd-cache`) sizes itself when the model starts, so the tuner does not touch it, and the context stays what you chose.
 
+## One graphics card with the experts in RAM (the PCIe lane)
+
+With one NVIDIA card whose memory holds only part of the experts and enough RAM for the rest (for example a 24 GB card,
+128 GB of RAM and `--mmap-experts off`), most of each word's experts are computed by the CPU. The one-GPU decode path
+lets the graphics card take some of them. It is Project Maya's (RubenTorney's mw00/project-maya#476, with the Windows
+change of mw00/project-maya#567), ported into `strata-dsv41`:
+
+- **The PCIe lane.** For each word, some of the experts the card does not hold are sent over PCIe and computed on the
+  card while the CPU computes the rest. How many is decided from this PC's own times, measured at the first start and
+  kept in `lane-times.txt` in the model's pack folder. While it answers, the engine also checks that the words really
+  come faster this way. Where they do not, it stops streaming, and the next start runs without the path (delete
+  `lane-times.txt` to measure again).
+- **In place.** The copies of the experts in RAM are pinned, so the card reads an expert straight from its copy.
+- **DSpark windows.** The drafter's verify windows stream too, not only single words.
+- **Recent slots.** An expert the card pulled stays on the card in one of 32 recent slots a layer and serves the next
+  words. Those slots come out of the card's expert room (the coldest experts of the profile).
+
+It is on by default only with one discrete NVIDIA card, on Linux and on Windows. On Windows the copies are pinned by need
+(the most-used layers first), because Windows lets a card lock only about half the RAM. AMD cards, integrated GPUs and
+several cards keep the engine as it was. The start's log says which way it went (`the one-GPU decode path ...`), the
+decode summary counts the experts `streamed to the GPU`, and the `STAT` lines carry `pcie=`.
+
+Measured on Project Maya 1.1.33, not on this engine: an RTX 3090 with a Ryzen 7 5800X and 128 GB of RAM on Windows 11,
+Maya-XS, DSpark on, `maya.py --bench` (3 answers of 256 tokens, greedy): 14.4 tokens/s with the path off, 20.7 with it on;
+9.1 with the experts left on the SSD. Project Maya's own report (#476, Linux, RTX 3090 with a Ryzen 5 5600X, Maya-XS):
+12.9 to 27.8 tokens/s.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `STRATA_DS4_ONE_GPU` | on where it applies | `0` turns the whole path off: the engine as before. `DS4_DEFAULTS=026` turns it off too, unless this is `1` |
+| `STRATA_DS4_STREAM` | on with the path | `0`: no PCIe lane. `1`: the lane on other setups too (AMD, several cards), without the in-place pulls, windows and recent slots unless they are asked for. `2`: tests (the lane's room kept, nothing streamed) |
+| `DS4_STREAM_ZC` | on with the path | `0`: a streamed expert is read into pinned staging first instead of being pulled in place |
+| `DS4_STREAM_WIN` | on with the path | `0`: DSpark's verify windows do not stream |
+| `DS4_STREAM_SLOTS` | 16 | a verify window's streamed experts at most, a layer (1 to 16) |
+| `DS4_LAND` | on with the path | `0`: a streamed expert does not stay on the card, and there are no recent slots |
+| `DS4_RECENT` | 32 with `DS4_LAND` | recent slots a layer |
+| `STRATA_DS4_PIN_BY_NEED` | off, on for the path on Windows | `1`: pin the copies a layer at a time, the most-used first, until the system refuses or `STRATA_DS4_PIN_GB` is reached; the rest go through the staging |
+| `STRATA_DS4_PIN_GB` | 0 (no cap) | with pin by need: pin at most this many GB |
+| `STRATA_DS4_RAM_SKIP_W` | off | experimental, **changes the answers**: leave out a routed expert the card does not hold when its share of the word's routing weight is below this (`0.10`, `0.14`) |
+| `DS4_LANE_CAL` | `<pack>/lane-times.txt` | the times file; `none`: nothing kept |
+
+The names Project Maya uses (`MAYA_DS4_STREAM`, `MAYA_DS4_PIN_BY_NEED`, `MAYA_DS4_PIN_GB`, `MAYA_DS4_RAM_SKIP_W`) work
+too.
+
 ## The engine package
 
 DeepSeek's engine, `strata-dsv41`, is a separate download from the Strata engine: when you choose DeepSeek, setup (or `strata launch`) fetches the

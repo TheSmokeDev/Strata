@@ -852,14 +852,19 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
             const strata::ds4::Stats& s = m.stats();
             const double ms = now_ms() - t1;
             const double fed = (double) std::max<int64_t>(1, s.tokens - s_dec.tokens);
-            const double ex = (double) (s.experts - s_dec.experts), cx = (double) (s.cpu_experts - s_dec.cpu_experts);
+            const double ex = (double) (s.experts - s_dec.experts), cx = (double) (s.cpu_experts - s_dec.cpu_experts),
+                         sx = (double) (s.stream_experts - s_dec.stream_experts);
             std::string out = "STAT";
             char b[160];
             std::snprintf(b, sizeof b, " tok_s=%.2f ms_tok=%.2f vram_hit=%.4f cpu=%.3f ram=%.3f promo=%.3f engram_ms=%.3f",
                           ms > 0 ? 1000.0 * (double) produced / ms : 0.0, produced > 0 ? ms / (double) produced : 0.0,
-                          ex > 0 ? 1.0 - cx / ex : 1.0, cx / fed, (double) (s.ram_experts - s_dec.ram_experts) / fed,
+                          ex > 0 ? 1.0 - (cx + sx) / ex : 1.0, cx / fed, (double) (s.ram_experts - s_dec.ram_experts) / fed,
                           (double) (s.swaps - s_dec.swaps) / fed, (s.engram_ms - s_dec.engram_ms) / fed);
             out += b;
+            if (sx > 0) {   // (the PCIe lane: experts a token streamed to the GPU)
+                std::snprintf(b, sizeof b, " pcie=%.3f", sx / fed);
+                out += b;
+            }
             const long long io = io_read_bytes();
             if (io >= 0 && io_dec >= 0) {
                 std::snprintf(b, sizeof b, " disk_mb=%.3f", (double) (io - io_dec) / 1e6 / fed);
@@ -1444,10 +1449,12 @@ int main(int argc, char** argv) {
     const double t2 = now_ms();
     const auto& s = m.stats();
     const double nt = std::max<double>(1.0, (double) (s.tokens - s0.tokens));
-    std::fprintf(stderr, "decode: %zu tokens in %.0f ms (%.2f tok/s); CPU lane: %lld of %lld experts; the cache moved %lld "
+    const long long streamed = (long long) (s.stream_experts - s0.stream_experts);   // (the PCIe lane's, when it ran)
+    const std::string streamed_s = streamed > 0 ? ", streamed to the GPU: " + std::to_string(streamed) : std::string();
+    std::fprintf(stderr, "decode: %zu tokens in %.0f ms (%.2f tok/s); CPU lane: %lld of %lld experts%s; the cache moved %lld "
                          "(%lld in all)\n", out.size(), t2 - t1,
                  out.size() > 1 ? 1000.0 * (double) (out.size() - 1) / (t2 - t1) : 0.0,
-                 (long long) (s.cpu_experts - s0.cpu_experts), (long long) (s.experts - s0.experts),
+                 (long long) (s.cpu_experts - s0.cpu_experts), (long long) (s.experts - s0.experts), streamed_s.c_str(),
                  (long long) (s.swaps - s0.swaps), (long long) s.swaps);
     std::fprintf(stderr, "decode per token: layers %.2f ms (of it: routing waits %.2f, CPU lane %.2f, the rest host launches), "
                          "head wait %.2f, Engram reads %.2f\n",
