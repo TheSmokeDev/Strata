@@ -89,11 +89,12 @@ inline bool streams_any(const Costs& k, int max_s, int n_max) {
     return false;
 }
 
-/// The one-GPU decode path's gate (ds4_model.cu's one_gpu_path): the setup RubenTorney's mw00/project-maya#476 was
-/// measured on - one discrete NVIDIA GPU, a tensor-parallel group of one - on Linux and (#567) on Windows.  An AMD build,
-/// several GPUs or groups, an integrated GPU: off.  Off too where the lane is off (STRATA_DS4_STREAM=0), where the times
-/// file says this GPU's lane streamed nothing at an earlier start (unless DS4_STREAM_FORCE), with STRATA_DS4_ONE_GPU=0,
-/// and under DS4_DEFAULTS=026 (Strata's 0.2.6 defaults, which had no such path) unless STRATA_DS4_ONE_GPU=1 asks for it.
+/// The one-GPU decode path's gate (ds4_model.cu's one_gpu_path).  Opt-in: STRATA_DS4_ONE_GPU=1 asks for it (on the A/B
+/// it was measured on in Strata - an RTX PRO 6000 capped to a 24 GB card's expert room, 24 or 8 CPU threads - decode was
+/// slower with it).  It then runs only on the setup RubenTorney's mw00/project-maya#476 was measured on - one discrete
+/// NVIDIA GPU, a tensor-parallel group of one - on Linux and (#567) on Windows; an AMD build, several GPUs or groups, an
+/// integrated GPU: off.  Off too where the lane is off (STRATA_DS4_STREAM=0) and where the times file says this GPU's
+/// lane streamed nothing at an earlier start (unless DS4_STREAM_FORCE).
 struct OneGpuSetup {
     bool hip = false;          // an AMD build (STRATA_USE_HIP)
     int devs = 0;              // the GPUs the engine runs on
@@ -103,19 +104,18 @@ struct OneGpuSetup {
     bool lane_off = false;     // STRATA_DS4_STREAM=0 (or DS4_STREAM=0)
     bool times_off = false;    // the times file's "<gpu> | lane" says "off"
     bool forced = false;       // DS4_STREAM_FORCE (tests: the timing plans nothing, the file is not read)
-    int asked = -1;            // STRATA_DS4_ONE_GPU: -1 not set, 0 off, 1 on where it can run (over DS4_DEFAULTS=026)
-    bool v026 = false;         // DS4_DEFAULTS=026
+    int asked = -1;            // STRATA_DS4_ONE_GPU: 1 asks for it (where it can run); -1 (not set) or 0: off
 };
 inline bool one_gpu_on(const OneGpuSetup& s) {
-    if (s.hip || s.asked == 0 || (s.v026 && s.asked != 1)) return false;
+    if (s.hip || s.asked != 1) return false;
     if (s.devs != 1 || s.groups != 1 || s.members != 1 || s.integrated) return false;
     if (s.lane_off) return false;
     return s.forced || !s.times_off;
 }
 /// A setting that follows the path unless given (-1: not set): DS4_STREAM_WIN, DS4_LAND and the like
 inline bool follow(int set, bool path) { return set < 0 ? path : set != 0; }
-/// The PCIe lane itself in Strata: on by default where the one-GPU path's gate holds (where it was measured), elsewhere
-/// only when STRATA_DS4_STREAM (DS4_STREAM) asks for it (1 on, 2 the slots kept and nothing streamed: tests); 0 off
+/// The PCIe lane itself in Strata: on with the one-GPU path, elsewhere only when STRATA_DS4_STREAM (DS4_STREAM) asks for
+/// it (1 on, 2 the slots kept and nothing streamed: tests); 0 off
 inline bool lane_on(int set, bool one) { return set < 0 ? one : set != 0; }
 /// Pin by need (the copies pinned a layer at a time, the most-used first): STRATA_DS4_PIN_BY_NEED when given, else on
 /// for the one-GPU path on Windows with NVIDIA (#567: WDDM lets a GPU lock about half the RAM, so pinning every copy fails)

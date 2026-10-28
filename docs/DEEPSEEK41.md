@@ -148,10 +148,20 @@ change of mw00/project-maya#567), ported into `strata-dsv41`:
 - **Recent slots.** An expert the card pulled stays on the card in one of 32 recent slots a layer and serves the next
   words. Those slots come out of the card's expert room (the coldest experts of the profile).
 
-It is on by default only with one discrete NVIDIA card, on Linux and on Windows. On Windows the copies are pinned by need
-(the most-used layers first), because Windows lets a card lock only about half the RAM. AMD cards, integrated GPUs and
-several cards keep the engine as it was. The start's log says which way it went (`the one-GPU decode path ...`), the
-decode summary counts the experts `streamed to the GPU`, and the `STAT` lines carry `pcie=`.
+It is off by default. `STRATA_DS4_ONE_GPU=1` turns it on, and it then runs only with one discrete NVIDIA card, on Linux
+and on Windows. On Windows the copies are pinned by need (the most-used layers first), because Windows lets a card lock
+only about half the RAM. AMD cards, integrated GPUs and several cards keep the engine as it was. The start's log says
+which way it went (`the one-GPU decode path ...`), the decode summary counts the experts `streamed to the GPU`, and the
+`STAT` lines carry `pcie=`.
+
+Measured on this engine, once: a cloud machine (Colab) with an RTX PRO 6000 Blackwell (96 GB, its experts' room capped to
+a 24 GB card's with `--reserve-mib 73311`), an AMD EPYC 9B45 with 24 CPU threads and 176 GB of RAM, the 1.75 set without
+the drafter, `--mmap-experts off`. One question, greedy, a warm-up answer and then 3 answers of 256 tokens in one engine
+process. With the path: 25.3 tokens/s. Without it: 46.5 (the same build with `STRATA_DS4_ONE_GPU=0`) and 37.2 (the build
+before it; the same engine gave both, the spread is the expert cache's). With 8 CPU threads: 23.7 with the path, 31.6
+without. That machine's CPU lane was fast, so the path's own checks stopped streaming early in every run, and the pull
+each layer still makes then cost more than the path saved: with the pull held (`STRATA_DS4_STREAM=2`) the same start
+gave 45.0. That is why it is opt-in for now. It has not been run on a real 24 GB card with this engine.
 
 Measured on Project Maya 1.1.33, not on this engine: an RTX 3090 with a Ryzen 7 5800X and 128 GB of RAM on Windows 11,
 Maya-XS, DSpark on, `maya.py --bench` (3 answers of 256 tokens, greedy): 14.4 tokens/s with the path off, 20.7 with it on;
@@ -160,7 +170,7 @@ Maya-XS, DSpark on, `maya.py --bench` (3 answers of 256 tokens, greedy): 14.4 to
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `STRATA_DS4_ONE_GPU` | on where it applies | `0` turns the whole path off: the engine as before. `DS4_DEFAULTS=026` turns it off too, unless this is `1` |
+| `STRATA_DS4_ONE_GPU` | off | `1` turns the path on (one discrete NVIDIA card only); off, the engine is as before |
 | `STRATA_DS4_STREAM` | on with the path | `0`: no PCIe lane. `1`: the lane on other setups too (AMD, several cards), without the in-place pulls, windows and recent slots unless they are asked for. `2`: tests (the lane's room kept, nothing streamed) |
 | `DS4_STREAM_ZC` | on with the path | `0`: a streamed expert is read into pinned staging first instead of being pulled in place |
 | `DS4_STREAM_WIN` | on with the path | `0`: DSpark's verify windows do not stream |

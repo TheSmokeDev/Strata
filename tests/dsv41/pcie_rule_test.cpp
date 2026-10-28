@@ -49,9 +49,11 @@ int main() {
     }
     CHECK(pcie::table(none, 16) == "0 0 0 0 0 0 0 0 0");
 
-    // the one-GPU path's gate: one discrete NVIDIA GPU, a group of one
+    // the one-GPU path's gate: opt-in (STRATA_DS4_ONE_GPU=1), then one discrete NVIDIA GPU, a group of one
     pcie::OneGpuSetup one;
     one.devs = 1, one.groups = 1, one.members = 1;
+    CHECK(!pcie::one_gpu_on(one));   // (not asked: off)
+    one.asked = 1;
     CHECK(pcie::one_gpu_on(one));
     pcie::OneGpuSetup s = one;
     s.hip = true;   // an AMD build
@@ -66,14 +68,8 @@ int main() {
     CHECK(!pcie::one_gpu_on(s));
     s = one, s.asked = 0;   // STRATA_DS4_ONE_GPU=0: the engine as before
     CHECK(!pcie::one_gpu_on(s));
-    s = one, s.asked = 1;   // (1 does not force it where it cannot run)
-    CHECK(pcie::one_gpu_on(s));
-    s.hip = true;
+    s = one, s.hip = true;   // (1 does not force it where it cannot run)
     CHECK(!pcie::one_gpu_on(s));
-    s = one, s.v026 = true;   // DS4_DEFAULTS=026: the 0.2.6 defaults had no such path ...
-    CHECK(!pcie::one_gpu_on(s));
-    s.asked = 1;   // ... unless the setting asks for it
-    CHECK(pcie::one_gpu_on(s));
     s = one, s.times_off = true;   // the times file: this GPU streamed nothing at an earlier start
     CHECK(!pcie::one_gpu_on(s));
     s.forced = true;   // DS4_STREAM_FORCE (tests) does not read the file's verdict

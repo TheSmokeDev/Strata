@@ -1091,11 +1091,10 @@ struct Model::Impl {
     bool ln_zc = false;        // the stream lane pulls the CPU lane's copied experts in place (zc_pin)
     // the one-GPU decode path (one_gpu_path, at load; RubenTorney's mw00/project-maya#476, Windows: #567): the PCIe
     // lane, the copies pulled in place (DS4_STREAM_ZC), a verify window's experts streamed (DS4_STREAM_WIN), streamed
-    // experts kept in a GGUF's recent slots (DS4_LAND) - on by default only where they were measured: one discrete
+    // experts kept in a GGUF's recent slots (DS4_LAND) - opt-in (STRATA_DS4_ONE_GPU=1), and then only on one discrete
     // NVIDIA GPU (a group of one), Linux or Windows.  (#476's IQ1_S multi-token CPU rows are Maya's ds4_iq_cpu.cpp rows,
     // which Strata compiles out: its low-bit experts' CPU lane is ds4_gg_cpu.cpp's)  Elsewhere the engine as before (no
-    // PCIe lane unless STRATA_DS4_STREAM=1 asks); each setting given explicitly (1 / 0) still decides for itself, and
-    // STRATA_DS4_ONE_GPU=0 turns the whole path off
+    // PCIe lane unless STRATA_DS4_STREAM=1 asks); each setting given explicitly (1 / 0) still decides for itself
     bool ln_one = false;
     // DS4_STREAM_WIN (default: ln_one): a verify window's CPU-lane experts stream too (lane_take_win), not a token's alone
     bool ln_win = false;
@@ -4844,7 +4843,6 @@ struct Model::Impl {
         su.forced = std::getenv("DS4_STREAM_FORCE") != nullptr;
         const char* og = env_or_maya("STRATA_DS4_ONE_GPU");
         su.asked = og == nullptr || og[0] == '\0' ? -1 : std::atoi(og) != 0 ? 1 : 0;
-        su.v026 = defaults_026();
         const bool shape = !su.hip && su.devs == 1 && su.groups == 1 && su.members == 1;
         if (shape) {
             cudaDeviceProp pr{};
@@ -4859,8 +4857,7 @@ struct Model::Impl {
         const bool one = pcie::one_gpu_on(su);
         const char* why = "off (not NVIDIA + one discrete GPU: the engine as before)";
         if (one) why = "on for now (NVIDIA, one GPU: kept if the PCIe lane's plan streams experts from RAM)";
-        else if (su.asked == 0) why = "off (STRATA_DS4_ONE_GPU=0: the engine as before)";
-        else if (su.v026 && su.asked != 1) why = "off (DS4_DEFAULTS=026: the 0.2.6 defaults; STRATA_DS4_ONE_GPU=1 turns it on)";
+        else if (su.asked != 1) why = "off (opt-in: STRATA_DS4_ONE_GPU=1 turns it on)";
         else if (shape && !su.integrated && su.lane_off) why = "off (STRATA_DS4_STREAM=0: nothing streams)";
         else if (shape && !su.integrated && su.times_off)
             why = "off (this GPU's PCIe lane streamed nothing at an earlier start - lane-times.txt in the pack; delete it "
